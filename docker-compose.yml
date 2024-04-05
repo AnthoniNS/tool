@@ -1,0 +1,115 @@
+version: '3.3'
+
+volumes:
+  db-data:
+  evolution_instances:
+  evolution_store:
+
+services:
+  banco_bd:
+    image: postgres:14-alpine
+    restart: always
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=typebot
+      - POSTGRES_PASSWORD=typebot
+
+  typebot-builder:
+    image: baptistearno/typebot-builder:latest
+    restart: always
+    depends_on:
+      - banco_bd
+      - smtp-server
+    ports:
+      - '9002:3000'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    environment:
+      - ENCRYPTION_SECRET=oWmo/VamT3DpA1aLcONVFNl3AbjHRs44
+      - DATABASE_URL=postgresql://postgres:typebot@banco_bd:5432/typebot
+      - NEXTAUTH_URL=http://127.0.0.1
+      - NEXT_PUBLIC_VIEWER_URL=http://127.0.0.1
+      - ADMIN_EMAIL=Anthoni_ns@hotmail.com
+      - SMTP_HOST=smtp.hostinger.com
+      - SMTP_PORT=587
+      - SMTP_USERNAME=suporte@commandas.gdapp.com.br
+      - SMTP_PASSWORD=Command@s30
+      - SMTP_FROM=suporte@commandas.gdapp.com.br
+
+  typebot-viewer:
+    image: baptistearno/typebot-viewer:latest
+    restart: always
+    depends_on:
+      - banco_bd
+      - smtp-server
+    ports:
+      - '9003:3000'
+    environment:
+      - ENCRYPTION_SECRET=oWmo/VamT3DpA1aLcONVFNl3AbjHRs44
+      - DATABASE_URL=postgresql://postgres:typebot@banco_bd:5432/typebot
+      - NEXT_PUBLIC_VIEWER_URL=http://127.0.0.1
+      - ADMIN_EMAIL=Anthoni_ns@hotmail.com
+      - SMTP_HOST=smtp.hostinger.com
+      - SMTP_PORT=587
+      - SMTP_USERNAME=suporte@commandas.gdapp.com.br
+      - SMTP_PASSWORD=Command@s30
+      - SMTP_FROM=suporte@commandas.gdapp.com.br
+
+  smtp-server:
+    image: namshi/smtp:latest
+    restart: always
+    environment:
+      - SMTP_USERNAME=suporte@commandas.gdapp.com.br
+      - SMTP_PASSWORD=Command@s30
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: always
+    ports:
+      - "9004:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  api:
+    container_name: evolution_api
+    image: atendai/evolution-api:latest
+    restart: always
+    ports:
+      - "9001:8080"
+    volumes:
+      - evolution_instances:/evolution/instances
+      - evolution_store:/evolution/store
+    networks:
+      - evolution-net
+    environment:
+      - NODE_ENV=production
+      - GENERIC_TIMEZONE=America/New_York
+      - N8N_SECURE_COOKIE=false
+    command: ['node', './dist/src/main.js']
+    expose:
+      - 8080
+
+  n8n:
+    image: n8nio/n8n
+    container_name: ticketz-n8n
+    restart: always
+    ports:
+      - "9000:5678" 
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin      
+      - N8N_BASIC_AUTH_PASSWORD=admin
+      - N8N_ENCRYPTION_KEY=your-encryption-key
+      - NODE_ENV=production
+      - GENERIC_TIMEZONE=America/Sao_Paulo
+      - N8N_SECURE_COOKIE=false
+    volumes:
+      - /path/to/n8n/data:/root/.n8n
+    networks:
+      - evolution-net
+
+networks:
+  evolution-net:
+    driver: bridge
