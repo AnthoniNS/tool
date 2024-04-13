@@ -1,88 +1,83 @@
 version: '3.3'
 
 volumes:
-  db-data:
+  db_data:
   evolution_instances:
   evolution_store:
+  redis_storage:
+  s3_data:
+  n8n_storage:
+
+networks:
+  evolution-net:
 
 services:
-  banco_bd:
-    image: postgres:14-alpine
+  typebot-db:
+    image: postgres:13
     restart: always
     volumes:
-      - db-data:/var/lib/postgresql/data
+      - db_data:/var/lib/postgresql/data
     environment:
       - POSTGRES_DB=typebot
       - POSTGRES_PASSWORD=typebot
 
   typebot-builder:
+    ports:
+      - 9001:3000
     image: baptistearno/typebot-builder:latest
     restart: always
     depends_on:
-      - banco_bd
-      - smtp-server
-    ports:
-      - '9002:3000'
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
+      - typebot-db
     environment:
-      - ENCRYPTION_SECRET=oWmo/VamT3DpA1aLcONVFNl3AbjHRs44
-      - DATABASE_URL=postgresql://postgres:typebot@banco_bd:5432/typebot
-      - NEXTAUTH_URL=http://127.0.0.1
-      - NEXT_PUBLIC_VIEWER_URL=http://127.0.0.1
-      - ADMIN_EMAIL=Anthoni_ns@hotmail.com
-      - SMTP_HOST=smtp.hostinger.com
+      - DATABASE_URL=postgresql://postgres:typebot@typebot-db:5432/typebot
+      - NEXTAUTH_URL=http://194.140.199.75:9001
+      - NEXT_PUBLIC_VIEWER_URL=http://194.140.199.75:9002
+      - ENCRYPTION_SECRET=Jk/AC+nzkhtg5UscPcmPLqkXRkU3u2Mm
+      - ADMIN_EMAIL=anthonins88@gmail.com
+      - SMTP_HOST=smtp.gmail.com
+      - SMTP_USERNAME=anthonins88@gmail.com
+      - SMTP_PASSWORD=bhnavnaglbvifunt
+      - SMTP_AUTH_DISABLED=false
       - SMTP_PORT=587
-      - SMTP_USERNAME=suporte@commandas.gdapp.com.br
-      - SMTP_PASSWORD=Command@s30
-      - SMTP_FROM=suporte@commandas.gdapp.com.br
+      - SMTP_SECURE=true
+      - NEXT_PUBLIC_SMTP_FROM=anthonins88@gmail.com
+      - S3_ACCESS_KEY=minio
+      - S3_SECRET_KEY=minio123
+      - S3_BUCKET=typebot
+      - S3_ENDPOINT=194.140.199.75
+    networks:
+      - evolution-net
 
   typebot-viewer:
+    ports:
+      - 9002:3000
     image: baptistearno/typebot-viewer:latest
     restart: always
-    depends_on:
-      - banco_bd
-      - smtp-server
-    ports:
-      - '9003:3000'
     environment:
-      - ENCRYPTION_SECRET=oWmo/VamT3DpA1aLcONVFNl3AbjHRs44
-      - DATABASE_URL=postgresql://postgres:typebot@banco_bd:5432/typebot
-      - NEXT_PUBLIC_VIEWER_URL=http://127.0.0.1
-      - ADMIN_EMAIL=Anthoni_ns@hotmail.com
-      - SMTP_HOST=smtp.hostinger.com
-      - SMTP_PORT=587
-      - SMTP_USERNAME=suporte@commandas.gdapp.com.br
-      - SMTP_PASSWORD=Command@s30
-      - SMTP_FROM=suporte@commandas.gdapp.com.br
+      - DATABASE_URL=postgresql://postgres:typebot@typebot-db:5432/typebot
+      - NEXT_PUBLIC_VIEWER_URL=http://194.140.199.75:9002
+      - NEXTAUTH_URL=http://194.140.199.75:9001
+      - ENCRYPTION_SECRET=Jk/AC+nzkhtg5UscPcmPLqkXRkU3u2Mm
+      - S3_ACCESS_KEY=minio
+      - S3_SECRET_KEY=minio123
+      - S3_BUCKET=typebot
+      - S3_ENDPOINT=http://194.140.199.75
+    networks:
+      - evolution-net
 
-  smtp-server:
-    image: namshi/smtp:latest
+  mail:
+    image: bytemark/smtp
     restart: always
-    environment:
-      - SMTP_USERNAME=suporte@commandas.gdapp.com.br
-      - SMTP_PASSWORD=Command@s30
 
-  portainer:
-    image: portainer/portainer-ce:latest
-    container_name: portainer
-    restart: always
-    ports:
-      - "9004:9000"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-
-  api:
-    container_name: evolution_api
+  evolucionApi:
+    container_name: evolucionApi
     image: atendai/evolution-api:latest
     restart: always
     ports:
-      - "9001:8080"
+      - "9003:8080"
     volumes:
       - evolution_instances:/evolution/instances
       - evolution_store:/evolution/store
-    networks:
-      - evolution-net
     environment:
       - NODE_ENV=production
       - GENERIC_TIMEZONE=America/New_York
@@ -90,26 +85,80 @@ services:
     command: ['node', './dist/src/main.js']
     expose:
       - 8080
+    networks:
+      - evolution-net
 
   n8n:
     image: n8nio/n8n
     container_name: ticketz-n8n
     restart: always
     ports:
-      - "9000:5678" 
+      - "9004:5678" 
     environment:
       - N8N_BASIC_AUTH_ACTIVE=true
       - N8N_BASIC_AUTH_USER=admin      
       - N8N_BASIC_AUTH_PASSWORD=admin
-      - N8N_ENCRYPTION_KEY=your-encryption-key
+      - N8N_ENCRYPTION_KEY=Jk/AC+nzkhtg5UscPcmPLqkXRkU3u2Mm
       - NODE_ENV=production
       - GENERIC_TIMEZONE=America/Sao_Paulo
       - N8N_SECURE_COOKIE=false
+      - EXECUTIONS_MODE=queue
+      - QUEUE_BULL_REDIS_HOST=redis
+      - QUEUE_BULL_REDIS_PASSWORD=12345678
+      - QUEUE_HEALTH_CHECK_ACTIVE=true
     volumes:
       - /path/to/n8n/data:/root/.n8n
+      - "n8n_storage:/home/n8n/.n8n"
     networks:
       - evolution-net
 
-networks:
-  evolution-net:
-    driver: bridge
+  redis:
+    image: redis:latest
+    restart: always
+    command: "redis-server --requirepass 12345678"
+    volumes:
+      - "redis_storage:/data"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5    
+    networks:
+      - evolution-net
+
+  minio:
+    labels:
+      virtual.host: 'http://194.140.199.75:9000'
+      virtual.port: '9000'
+      virtual.tls-email: 'anthonins88@gmail.com'
+    image: minio/minio
+    command: server /data
+    ports:
+      - '9000:9000'
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio123
+    volumes:
+      - s3_data:/data
+    networks:
+      - evolution-net
+
+  createbuckets:
+    image: minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 10;
+      /usr/bin/mc config host add minio http://194.140.199.75:9000 minio minio123;
+      # Verifica se o bucket já existe
+      if /usr/bin/mc ls minio/typebot 2>/dev/null; then
+        echo 'Bucket "typebot" already exists.'
+      else
+        # Cria o bucket 'typebot' se ainda não existir
+        /usr/bin/mc mb minio/typebot;
+        /usr/bin/mc policy set public minio/typebot;
+        echo 'Bucket "typebot" created successfully and set as public.'
+      fi;
+      exit 0;
+      "
