@@ -82,6 +82,7 @@ services:
       - NODE_ENV=production
       - GENERIC_TIMEZONE=America/New_York
       - N8N_SECURE_COOKIE=false
+      - AUTHENTICATION_API_KEY='B6D711FCDE4D4FD5936544120E713976'
     command: ['node', './dist/src/main.js']
     expose:
       - 8080
